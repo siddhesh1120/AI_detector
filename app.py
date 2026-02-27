@@ -1,12 +1,13 @@
 import streamlit as st
 import requests
+import time
 from PIL import Image
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="AI Content Checker", layout="centered")
 
 st.title("🧠 AI Content Authenticity Checker")
-st.write("Analyze whether text or images may be AI-generated.")
+st.write("Analyze whether text or images may be AI-generated using transformer detection.")
 
 # ---------------- TEXT DETECTION FUNCTION ----------------
 def detect_ai_text(text):
@@ -16,16 +17,22 @@ def detect_ai_text(text):
         "Authorization": f"Bearer {st.secrets['HF_TOKEN']}"
     }
 
-    response = requests.post(API_URL, headers=headers, json={"inputs": text})
+    # Retry logic for cold start (model sleeping)
+    for _ in range(5):
+        response = requests.post(API_URL, headers=headers, json={"inputs": text})
 
-    if response.status_code != 200:
-        return None
+        if response.status_code == 200:
+            result = response.json()[0]
 
-    result = response.json()[0]
+            for label in result:
+                if label["label"] == "Fake":  # Fake = AI generated
+                    return label["score"]
 
-    for label in result:
-        if label["label"] == "Fake":   # Fake = AI Generated
-            return label["score"]
+        elif response.status_code == 503:
+            # Model loading → wait and retry
+            time.sleep(3)
+        else:
+            return None
 
     return None
 
@@ -42,7 +49,7 @@ if st.button("Analyze Text"):
             score = detect_ai_text(text_input)
 
         if score is None:
-            st.error("Model is warming up. Please try again in 5 seconds.")
+            st.error("Model unavailable. Please try again in a few seconds.")
         else:
             percent = round(score * 100, 2)
 
@@ -60,7 +67,7 @@ if st.button("Analyze Text"):
         st.error("Please enter some text to analyze.")
 
 
-# ---------------- IMAGE SECTION (Prototype UI) ----------------
+# ---------------- IMAGE SECTION (Prototype) ----------------
 st.subheader("🖼 Image Analysis (Prototype)")
 
 uploaded_file = st.file_uploader("Upload an image", type=["jpg", "png", "jpeg"])
@@ -69,4 +76,4 @@ if uploaded_file:
     image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    st.info("Image detection module can be extended using CLIP / GAN fingerprint models.")
+    st.info("Image detection module can be extended using CLIP or GAN fingerprint models.")
