@@ -1,40 +1,47 @@
 import streamlit as st
 import torch
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
-from PIL import Image
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="AI Content Checker", layout="centered")
 
 st.title("🧠 AI Content Authenticity Checker")
-st.write("AI text detection using transformer classification.")
+st.write("Detect whether text is AI-generated or human-written.")
 
 # ---------------- LOAD MODEL ----------------
 @st.cache_resource
 def load_model():
-    model_name = "openai-community/roberta-base-openai-detector"
+    model_name = "roberta-base-openai-detector"   # better loading stability
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSequenceClassification.from_pretrained(model_name)
+    model.eval()
     return tokenizer, model
 
 tokenizer, model = load_model()
 
 # ---------------- TEXT DETECTION ----------------
 def detect_ai_text(text):
-
-    inputs = tokenizer(text, return_tensors="pt", truncation=True)
+    inputs = tokenizer(
+        text,
+        return_tensors="pt",
+        truncation=True,
+        padding=True,
+        max_length=512
+    )
 
     with torch.no_grad():
         outputs = model(**inputs)
 
     probs = torch.softmax(outputs.logits, dim=1)
 
+    # IMPORTANT: label mapping fix
+    # index 0 = human, index 1 = AI (for this model)
+    human_score = probs[0][0].item()
     ai_score = probs[0][1].item()
 
-    return ai_score
+    return human_score, ai_score
 
-
-# ---------------- TEXT ANALYSIS UI ----------------
+# ---------------- UI ----------------
 st.subheader("📄 Text Analysis")
 
 text_input = st.text_area("Paste your text here")
@@ -43,36 +50,24 @@ if st.button("Analyze Text"):
 
     if text_input.strip():
 
-        with st.spinner("Analyzing text using transformer model..."):
+        with st.spinner("Analyzing..."):
+            human_score, ai_score = detect_ai_text(text_input)
 
-            score = detect_ai_text(text_input)
+        ai_percent = round(ai_score * 100, 2)
+        human_percent = round(human_score * 100, 2)
 
-        percent = round(score * 100, 2)
+        st.write(f"🧑 Human Probability: {human_percent}%")
+        st.write(f"🤖 AI Probability: {ai_percent}%")
 
-        st.success(f"AI Probability: {percent}%")
+        st.progress(ai_score)
 
-        if percent > 75:
-            st.warning("Likely AI-generated")
-
-        elif percent > 40:
-            st.info("Possibly AI-assisted writing")
-
+        # ---------------- BETTER LOGIC ----------------
+        if ai_score > 0.65:
+            st.error("⚠️ Likely AI-generated")
+        elif ai_score > 0.45:
+            st.warning("⚠️ Possibly AI-assisted")
         else:
-            st.success("Likely human-written")
+            st.success("✅ Likely human-written")
 
     else:
         st.error("Please enter some text.")
-
-
-# ---------------- IMAGE SECTION (UI ONLY) ----------------
-st.subheader("🖼 Image Analysis")
-
-uploaded_file = st.file_uploader("Upload an image", type=["jpg","jpeg","png"])
-
-if uploaded_file:
-
-    image = Image.open(uploaded_file)
-
-    st.image(image, caption="Uploaded Image", use_column_width=True)
-
-    st.info("Image detection module can be added using diffusion artifact or CLIP-based forensic models.")
