@@ -11,7 +11,7 @@ st.write("Detect whether text is AI-generated or human-written.")
 # ---------------- LOAD MODEL ----------------
 @st.cache_resource
 def load_model():
-    model_name = "roberta-base-openai-detector"   # better loading stability
+    model_name = "roberta-base-openai-detector"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForSequenceClassification.from_pretrained(model_name)
     model.eval()
@@ -34,10 +34,10 @@ def detect_ai_text(text):
 
     probs = torch.softmax(outputs.logits, dim=1)
 
-    # IMPORTANT: label mapping fix
-    # index 0 = human, index 1 = AI (for this model)
-    human_score = probs[0][0].item()
-    ai_score = probs[0][1].item()
+    # Correct label mapping for roberta-base-openai-detector:
+    # Index 0 = Fake (AI), Index 1 = Real (Human)
+    ai_score = probs[0][0].item()
+    human_score = probs[0][1].item()
 
     return human_score, ai_score
 
@@ -61,7 +61,6 @@ if st.button("Analyze Text"):
 
         st.progress(ai_score)
 
-        # ---------------- BETTER LOGIC ----------------
         if ai_score > 0.65:
             st.error("⚠️ Likely AI-generated")
         elif ai_score > 0.45:
