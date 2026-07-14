@@ -1,1 +1,1 @@
-# AI_detector
+# VerifyText
